@@ -1,4 +1,4 @@
-// MAVILDA BOT - VERSIÓN PROFESIONAL COMPLETA
+// MAVILDA BOT - VERSIÓN PROFESIONAL COMPLETA CON PROMPT
 const express = require("express");
 const cors = require("cors");
 const app = express();
@@ -6,80 +6,43 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// PROMPT PROFESIONAL COMPLETO
+const MAVILDA_PROMPT = `
+Sos Mavilda, asesora comercial especializada en drones agrícolas DJI de Seragro.
+Tu personalidad: profesional pero cercana, con modismos del campo santafesino, empática y orientada a resolver problemas reales del productor agropecuario.
+
+ESTILO DE COMUNICACIÓN:
+- Usá voseo argentino natural: "vos", "tenés", "podés"
+- Incluí modismos del campo cuando sea apropiado: "a full", "de fierro", "bárbaro"
+- Sé cálida pero profesional, como un asesor de confianza del pueblo
+- No uses lenguaje técnico excesivo al principio, adaptate al nivel del cliente
+- Evitá repeticiones robóticas, variá tus respuestas
+
+PRODUCTOS Y CARACTERÍSTICAS:
+- T25P: Ideal arranque, 25L, 100-300 ha, USD 12.999
+- T50: Equilibrado, 50L, 300-500 ha, USD 24.999
+- T70P: Alta performance, 70L, 500-800 ha, USD 32.999
+- T100: Máxima capacidad, 100L, +800 ha, USD 45.999
+- Mavic3M: Mapeo y monitoreo multiespectral, USD 4.999
+
+DICCIONARIO AGRO SANTAFESINO:
+- "Lote" en vez de parcela
+- "Pulverizar" o "fumigar" para aplicaciones
+- "Campaña" para temporada
+- "Rinde" para rendimiento
+- "A campo" para trabajo en terreno
+
+Recordá: Tu objetivo es AYUDAR al productor a mejorar su operación,
+la venta viene como consecuencia natural de brindar valor real.
+`;
+
 // Base de datos de sesiones en memoria
 const sessions = {};
 
-// Análisis inteligente de mensaje
-function analyzeMessage(message) {
-  const msgLower = message
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  return {
-    // Detección de modelo
-    model: msgLower.includes("t25")
-      ? "T25P"
-      : msgLower.includes("t50")
-        ? "T50"
-        : msgLower.includes("t70")
-          ? "T70P"
-          : msgLower.includes("t100")
-            ? "T100"
-            : msgLower.includes("mavic")
-              ? "Mavic3M"
-              : null,
-
-    // Detección de superficie
-    surface: message.match(/(\d+)\s*(ha|hectarea)/i)?.[1],
-
-    // Detección de contacto
-    phone: message.match(/[\d\s\-\+\(\)]{10,15}/)?.[0]?.replace(/\D/g, ""),
-    email: message.match(/[^\s@]+@[^\s@]+\.[^\s@]+/)?.[0],
-
-    // Detección de intención
-    intent:
-      msgLower.includes("precio") ||
-      msgLower.includes("costo") ||
-      msgLower.includes("cuanto") ||
-      msgLower.includes("vale")
-        ? "price"
-        : msgLower.includes("demo") ||
-            msgLower.includes("prueba") ||
-            msgLower.includes("verlo")
-          ? "demo"
-          : msgLower.includes("financ") ||
-              msgLower.includes("cuota") ||
-              msgLower.includes("pago")
-            ? "financing"
-            : msgLower.includes("especific") ||
-                msgLower.includes("tecnic") ||
-                msgLower.includes("rendimiento")
-              ? "specs"
-              : msgLower.includes("compar") || msgLower.includes("diferencia")
-                ? "compare"
-                : "general",
-
-    // Palabras clave del agro
-    agroTerms: {
-      hasLote: msgLower.includes("lote"),
-      hasCampaña: msgLower.includes("campaña") || msgLower.includes("campana"),
-      hasCultivo:
-        msgLower.includes("soja") ||
-        msgLower.includes("maiz") ||
-        msgLower.includes("trigo"),
-      hasFumigacion: msgLower.includes("fumig") || msgLower.includes("pulveri"),
-      hasProblema:
-        msgLower.includes("maleza") ||
-        msgLower.includes("plaga") ||
-        msgLower.includes("problem"),
-    },
-  };
-}
-
-// Obtener o crear sesión
+// Función para obtener o crear sesión
 function getSession(sessionId) {
   if (!sessions[sessionId]) {
+    console.log(`🆕 Nueva sesión: ${sessionId}`);
     sessions[sessionId] = {
       id: sessionId,
       stage: "greeting",
@@ -99,16 +62,135 @@ function getSession(sessionId) {
   return sessions[sessionId];
 }
 
-// Generador de respuestas contextual
+// Análisis inteligente de mensaje
+function analyzeMessage(message) {
+  const msgLower = message
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  // Detección de superficie mejorada
+  let surface = null;
+  const surfacePatterns = [
+    /(\d+)\s*(ha|hectarea|hectareas)/i,
+    /(\d+)\s*(?:de\s+)?(?:superficie|campo)/i,
+    /(?:tengo|trabajo|cultivo)\s+(\d+)/i,
+  ];
+
+  for (const pattern of surfacePatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      surface = match[1];
+      break;
+    }
+  }
+
+  return {
+    // Detección de modelo
+    model:
+      msgLower.includes("t25") || msgLower.includes("25")
+        ? "T25P"
+        : msgLower.includes("t50") || msgLower.includes("50")
+          ? "T50"
+          : msgLower.includes("t70") || msgLower.includes("70")
+            ? "T70P"
+            : msgLower.includes("t100") || msgLower.includes("100")
+              ? "T100"
+              : msgLower.includes("mavic")
+                ? "Mavic3M"
+                : null,
+
+    // Superficie detectada
+    surface: surface,
+
+    // Detección de contacto
+    phone: message.match(/[\d\s\-\+\(\)]{10,15}/)?.[0]?.replace(/\D/g, ""),
+    email: message.match(/[^\s@]+@[^\s@]+\.[^\s@]+/)?.[0],
+
+    // Detección de intención
+    intent:
+      msgLower.includes("precio") ||
+      msgLower.includes("costo") ||
+      msgLower.includes("cuanto") ||
+      msgLower.includes("vale") ||
+      msgLower.includes("sale") ||
+      msgLower.includes("$") ||
+      msgLower.includes("usd")
+        ? "price"
+        : msgLower.includes("demo") ||
+            msgLower.includes("prueba") ||
+            msgLower.includes("verlo")
+          ? "demo"
+          : msgLower.includes("financ") ||
+              msgLower.includes("cuota") ||
+              msgLower.includes("pago")
+            ? "financing"
+            : msgLower.includes("especific") ||
+                msgLower.includes("tecnic") ||
+                msgLower.includes("rendimiento") ||
+                msgLower.includes("caracteristica")
+              ? "specs"
+              : msgLower.includes("compar") ||
+                  msgLower.includes("diferencia") ||
+                  msgLower.includes("versus")
+                ? "compare"
+                : "general",
+
+    // Palabras clave del agro
+    agroTerms: {
+      hasLote: msgLower.includes("lote"),
+      hasCampaña: msgLower.includes("campaña") || msgLower.includes("campana"),
+      hasCultivo:
+        msgLower.includes("soja") ||
+        msgLower.includes("maiz") ||
+        msgLower.includes("trigo") ||
+        msgLower.includes("girasol") ||
+        msgLower.includes("sorgo"),
+      hasFumigacion:
+        msgLower.includes("fumig") ||
+        msgLower.includes("pulveri") ||
+        msgLower.includes("aplicacion"),
+      hasProblema:
+        msgLower.includes("maleza") ||
+        msgLower.includes("plaga") ||
+        msgLower.includes("problem") ||
+        msgLower.includes("yuyo") ||
+        msgLower.includes("insecto"),
+    },
+
+    // Detección si es saludo
+    isGreeting:
+      msgLower.includes("hola") ||
+      msgLower.includes("buen") ||
+      msgLower.includes("hi") ||
+      msgLower.includes("buenas") ||
+      msgLower.includes("que tal"),
+  };
+}
+
+// Generador de respuestas contextual mejorado
 function generateResponse(session, analysis, message) {
   const { stage, userName, modelInterest, surfaceHA, messages } = session;
-  const { intent, model, surface, phone, email, agroTerms } = analysis;
+  const { intent, model, surface, phone, email, agroTerms, isGreeting } =
+    analysis;
 
   // Actualizar datos de sesión si se detectaron
-  if (model && !modelInterest) session.modelInterest = model;
-  if (surface) session.surfaceHA = parseInt(surface);
-  if (phone && !session.userPhone) session.userPhone = phone;
-  if (email && !session.userEmail) session.userEmail = email;
+  if (model && !modelInterest) {
+    session.modelInterest = model;
+    console.log("✅ Modelo detectado:", model);
+  }
+  if (surface) {
+    session.surfaceHA = parseInt(surface);
+    console.log("✅ Superficie detectada:", surface + " ha");
+  }
+  if (phone && !session.userPhone) {
+    session.userPhone = phone;
+    console.log("✅ Teléfono detectado:", phone);
+  }
+  if (email && !session.userEmail) {
+    session.userEmail = email;
+    console.log("✅ Email detectado:", email);
+  }
 
   // ETAPA: SALUDO INICIAL
   if (messages === 1) {
@@ -120,17 +202,26 @@ function generateResponse(session, analysis, message) {
     );
   }
 
-  // CAPTURA DE NOMBRE
-  if (messages === 2 && !userName && message.length < 30) {
+  // ETAPA: CAPTURA DE NOMBRE
+  if (messages === 2 && !userName) {
+    // Si es un saludo, no es un nombre
+    if (isGreeting) {
+      return "¿Me decís tu nombre así te puedo asesorar mejor?";
+    }
+    // Si es muy largo o tiene números, probablemente no es un nombre
+    if (message.length > 30 || /\d/.test(message)) {
+      return "Disculpá, no entendí tu nombre. ¿Cómo te llamás?";
+    }
+    // Capturar como nombre
     session.userName = message.trim();
     session.stage = "diagnosis";
 
-    const respuestas = [
-      `¡Mucho gusto ${session.userName}! Contame, ¿qué desafío tenés hoy en tu campo que te gustaría resolver?`,
-      `¡Qué bueno conocerte ${session.userName}! ¿En qué te puedo ayudar con la tecnología de drones?`,
-      `¡Hola ${session.userName}! Me alegra que te intereses por modernizar tu operación. ¿Qué necesidad específica tenés?`,
+    const saludos = [
+      `¡Mucho gusto ${session.userName}! 🚁\n\n¿Qué superficie necesitás cubrir con el drone? También contame qué cultivos trabajás principalmente.`,
+      `¡Qué bueno conocerte ${session.userName}!\n\n¿Cuántas hectáreas tenés para trabajar con drones?`,
+      `¡Hola ${session.userName}! Me alegra que te intereses por la tecnología de drones.\n\n¿Qué desafío específico querés resolver en tu campo?`,
     ];
-    return respuestas[Math.floor(Math.random() * respuestas.length)];
+    return saludos[Math.floor(Math.random() * saludos.length)];
   }
 
   const name = userName || "che";
@@ -141,12 +232,12 @@ function generateResponse(session, analysis, message) {
       if (!modelInterest) {
         return (
           `${name}, para darte un precio exacto, ¿qué modelo te interesa?\n\n` +
-          `Te cuento las opciones:\n` +
-          `• T25P - Ideal para empezar (100-300 ha)\n` +
-          `• T50 - El más equilibrado (300-500 ha)\n` +
-          `• T70P - Alta performance (500-800 ha)\n` +
-          `• T100 - Máxima capacidad (+800 ha)\n` +
-          `• Mavic3M - Para mapeo y monitoreo`
+          `📊 Opciones según superficie:\n` +
+          `• T25P (100-300 ha) - Ideal para empezar\n` +
+          `• T50 (300-500 ha) - El más equilibrado\n` +
+          `• T70P (500-800 ha) - Alta performance\n` +
+          `• T100 (+800 ha) - Máxima capacidad\n` +
+          `• Mavic3M - Mapeo y monitoreo`
         );
       }
       session.stage = "proposal";
@@ -174,67 +265,75 @@ function generateResponse(session, analysis, message) {
       return (
         `${name}, tenemos excelentes opciones de financiación:\n\n` +
         `💳 **Planes disponibles:**\n` +
-        `• Hasta 12 cuotas sin interés con tarjetas bancarias\n` +
+        `• Hasta 12 cuotas sin interés con tarjetas\n` +
         `• Leasing agrícola a 24-36 meses\n` +
-        `• Financiación directa adaptada a tu ciclo de cosecha\n` +
+        `• Financiación directa adaptada a tu ciclo productivo\n` +
         `• Posibilidad de pago en granos\n\n` +
-        `¿Qué opción te resulta más conveniente para tu operación?`
+        `¿Qué opción se adapta mejor a tu flujo de caja?`
       );
 
     case "compare":
       return (
-        `${name}, cada modelo tiene sus ventajas según tu necesidad:\n\n` +
+        `${name}, cada modelo tiene sus ventajas según tu operación:\n\n` +
         `**Para campos chicos-medianos (hasta 300 ha):**\n` +
-        `→ T25P: Más económico, fácil de operar, ideal para empezar\n\n` +
+        `→ T25P: Más económico, fácil de operar, retorno rápido\n\n` +
         `**Para operaciones medianas (300-500 ha):**\n` +
         `→ T50: Mejor relación inversión/rendimiento\n\n` +
         `**Para grandes superficies (+500 ha):**\n` +
-        `→ T70P o T100: Máxima eficiencia, menor costo por hectárea\n\n` +
-        `¿Cuántas hectáreas trabajás habitualmente?`
+        `→ T70P o T100: Máxima eficiencia operativa\n\n` +
+        `¿Cuántas hectáreas trabajás vos?`
       );
   }
 
   // FLUJO CONVERSACIONAL NATURAL
+  if (stage === "diagnosis" && !surfaceHA && surface) {
+    // Si detectamos superficie, recomendar
+    const ha = parseInt(surface);
+    session.surfaceHA = ha;
+    session.stage = "proposal";
+
+    if (ha <= 300) {
+      session.modelInterest = "T25P";
+      return (
+        `${name}, para tus ${ha} hectáreas, el T25P es perfecto. ` +
+        `Es nuestro modelo más vendido para productores que arrancan con drones.\n\n` +
+        `✅ Ventajas para tu campo:\n` +
+        `• Tanque de 25L ideal para lotes medianos\n` +
+        `• Fácil de operar, aprendés en un día\n` +
+        `• Retorno de inversión en 1-2 campañas\n` +
+        `• Precio: USD 12.999\n\n` +
+        `¿Querés ver una demo o necesitás info de financiación?`
+      );
+    } else if (ha <= 500) {
+      session.modelInterest = "T50";
+      return (
+        `Con ${ha} hectáreas, te recomiendo el T50, ${name}.\n\n` +
+        `✅ Por qué es ideal para vos:\n` +
+        `• Tanque de 50L, menos recargas\n` +
+        `• Rinde 40 ha/hora a full\n` +
+        `• El más elegido por contratistas\n` +
+        `• Precio: USD 24.999\n\n` +
+        `¿Te interesa coordinar una demo?`
+      );
+    } else {
+      session.modelInterest = "T100";
+      return (
+        `Para ${ha} hectáreas necesitás potencia, ${name}.\n` +
+        `Te recomiendo el T100.\n\n` +
+        `✅ Beneficios para operaciones grandes:\n` +
+        `• 100L de tanque, máxima autonomía\n` +
+        `• Hasta 42 ha/hora de rendimiento\n` +
+        `• Menor costo operativo por hectárea\n` +
+        `• Precio: USD 45.999\n\n` +
+        `¿Coordinamos una demo en tu campo?`
+      );
+    }
+  }
+
   if (stage === "diagnosis" && !surfaceHA) {
     return (
       `${name}, para recomendarte la mejor opción, ¿cuántas hectáreas necesitás cubrir ` +
       `en tu campaña típica? También contame qué cultivos trabajás principalmente.`
-    );
-  }
-
-  if (stage === "diagnosis" && surfaceHA && !modelInterest) {
-    session.stage = "proposal";
-
-    // Recomendación inteligente basada en superficie
-    let recomendacion = "";
-    if (surfaceHA <= 300) {
-      recomendacion =
-        `Para tus ${surfaceHA} hectáreas, el T25P es perfecto. ` +
-        `Es el más vendido para productores que arrancan con drones.\n\n` +
-        `✅ Ventajas para tu campo:\n` +
-        `• 25L de tanque, ideal para lotes medianos\n` +
-        `• Fácil de operar, aprendés en un día\n` +
-        `• Retorno de inversión en 1-2 campañas`;
-    } else if (surfaceHA <= 500) {
-      recomendacion =
-        `Con ${surfaceHA} hectáreas, te recomiendo el T50.\n\n` +
-        `✅ Por qué es ideal para vos:\n` +
-        `• 50L de tanque, menos recargas\n` +
-        `• Cubre 40 ha/hora a full\n` +
-        `• El más elegido por contratistas`;
-    } else {
-      recomendacion =
-        `Para ${surfaceHA} hectáreas necesitás alta capacidad.\n` +
-        `Te recomiendo el T70P o T100.\n\n` +
-        `✅ Beneficios para operaciones grandes:\n` +
-        `• Hasta 42 ha/hora de rendimiento\n` +
-        `• Autonomía para jornadas largas\n` +
-        `• Menor costo operativo por hectárea`;
-    }
-
-    return (
-      recomendacion +
-      `\n\n¿Te gustaría saber precios o preferís ver una demo primero?`
     );
   }
 
@@ -248,22 +347,40 @@ function generateResponse(session, analysis, message) {
     return (
       `${name}, te puedo mandar videos del ${modelInterest} trabajando en campos ` +
       `de la zona y un informe de rendimiento.\n\n` +
-      `¿Me pasás tu celu para enviártelos por WhatsApp?`
+      `📱 ¿Me pasás tu WhatsApp para enviártelo?`
     );
   }
 
   // RESPUESTA DEFAULT CONTEXTUAL
   if (modelInterest) {
     const opciones = [
-      `¿Qué más te gustaría saber del ${modelInterest}?`,
-      `El ${modelInterest} es excelente elección. ¿Querés conocer precios o especificaciones?`,
-      `¿Te interesa ver el ${modelInterest} funcionando en tu campo?`,
+      `¿Qué más te gustaría saber sobre el ${modelInterest}, ${name}?`,
+      `El ${modelInterest} es excelente elección. ¿Querés conocer precios o ver especificaciones?`,
+      `¿Te interesa ver el ${modelInterest} funcionando en tu campo, ${name}?`,
     ];
     return opciones[Math.floor(Math.random() * opciones.length)];
   }
 
+  // Si tiene cultivos mencionados
+  if (agroTerms.hasCultivo) {
+    return (
+      `${name}, excelente que trabajes con esos cultivos. ` +
+      `Los drones DJI son ideales para aplicaciones precisas. ` +
+      `¿Cuántas hectáreas manejás en total?`
+    );
+  }
+
+  // Si menciona problemas
+  if (agroTerms.hasProblema) {
+    return (
+      `${name}, los drones son la solución perfecta para esos problemas. ` +
+      `Aplicación precisa, sin compactación de suelo. ` +
+      `¿Qué superficie necesitás tratar?`
+    );
+  }
+
   return (
-    `${name}, ¿en qué más te puedo ayudar? Puedo contarte sobre modelos, ` +
+    `${name}, ¿en qué te puedo ayudar? Puedo contarte sobre modelos, ` +
     `precios, financiación o coordinar una demostración en tu campo.`
   );
 }
@@ -273,25 +390,37 @@ app.post("/process", async (req, res) => {
   try {
     const { message, sessionId } = req.body;
 
+    console.log("\n=================");
+    console.log("📥 MENSAJE:", message);
+    console.log("🔑 SESSION:", sessionId);
+
     if (!message || !sessionId) {
       return res.status(400).json({ error: "Mensaje y sessionId requeridos" });
     }
 
-    // Obtener sesión y analizar mensaje
+    // Obtener sesión y actualizar
     const session = getSession(sessionId);
     session.messages++;
     session.history.push({
       user: message,
       timestamp: new Date(),
-      analysis: analyzeMessage(message),
     });
 
-    const analysis = analyzeMessage(message);
+    console.log("📊 ESTADO:", {
+      mensaje: session.messages,
+      nombre: session.userName,
+      modelo: session.modelInterest,
+      hectareas: session.surfaceHA,
+    });
 
-    // Generar respuesta inteligente
+    // Analizar mensaje
+    const analysis = analyzeMessage(message);
+    console.log("🔍 ANÁLISIS:", analysis);
+
+    // Generar respuesta
     const response = generateResponse(session, analysis, message);
 
-    // Verificar si tenemos lead completo
+    // Verificar lead completo
     const hasCompleteLead = !!(
       session.userName &&
       (session.userPhone || session.userEmail) &&
@@ -300,15 +429,12 @@ app.post("/process", async (req, res) => {
 
     if (hasCompleteLead && !session.captured) {
       session.captured = true;
+      console.log("✅ LEAD CAPTURADO!");
     }
 
-    // LOG PARA DEBUG
-    console.log("📥 Recibido:", { message, sessionId });
-    console.log("🧠 Análisis:", analysis);
-    console.log("💬 Respuesta:", response);
-    console.log("📊 Sesión:", session);
+    console.log("💬 RESPUESTA:", response.substring(0, 100) + "...");
 
-    // Responder con toda la información necesaria para N8N
+    // Responder
     res.json({
       response,
       session: {
@@ -330,7 +456,7 @@ app.post("/process", async (req, res) => {
       model: session.modelInterest,
     });
   } catch (error) {
-    console.error("❌ Error:", error);
+    console.error("❌ ERROR:", error);
     res.status(500).json({
       error: "Error procesando mensaje",
       details: error.message,
@@ -338,7 +464,18 @@ app.post("/process", async (req, res) => {
   }
 });
 
-// INTERFAZ DE PRUEBA MEJORADA
+// ENDPOINT PARA LIMPIAR SESIONES
+app.get("/clear", (req, res) => {
+  const count = Object.keys(sessions).length;
+  Object.keys(sessions).forEach((key) => delete sessions[key]);
+  res.json({
+    mensaje: "✅ Sesiones limpiadas",
+    eliminadas: count,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// INTERFAZ DE PRUEBA
 app.get("/test", (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -449,28 +586,6 @@ app.get("/test", (req, res) => {
         button:active {
           transform: scale(0.95);
         }
-        .typing {
-          display: inline-block;
-          padding: 15px;
-          background: white;
-          border-radius: 20px;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .typing span {
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #999;
-          margin-right: 3px;
-          animation: bounce 1.4s infinite ease-in-out;
-        }
-        .typing span:nth-child(1) { animation-delay: -0.32s; }
-        .typing span:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-10px); }
-        }
         .status {
           padding: 10px;
           background: #e8f5e9;
@@ -486,7 +601,7 @@ app.get("/test", (req, res) => {
           <h1>🚁 Mavilda Bot - Seragro</h1>
           <p>Asesora en Drones Agrícolas DJI</p>
         </div>
-        <div class="status" id="status">Conectado - Sesión de prueba</div>
+        <div class="status" id="status">Sesión de prueba activa</div>
         <div id="chat"></div>
         <div class="input-area">
           <input id="msg" placeholder="Escribí tu mensaje..." autocomplete="off">
@@ -508,14 +623,8 @@ app.get("/test", (req, res) => {
           const msg = input.value.trim();
           if (!msg) return;
 
-          // Mostrar mensaje del usuario
           chat.innerHTML += '<div class="message user"><div class="bubble">' + msg + '</div></div>';
           input.value = '';
-          chat.scrollTop = chat.scrollHeight;
-
-          // Mostrar indicador de escritura
-          const typingId = 'typing_' + Date.now();
-          chat.innerHTML += '<div class="message bot" id="' + typingId + '"><div class="typing"><span></span><span></span><span></span></div></div>';
           chat.scrollTop = chat.scrollHeight;
 
           try {
@@ -526,34 +635,27 @@ app.get("/test", (req, res) => {
             });
 
             const data = await resp.json();
+            messageCount++;
 
-            // Quitar indicador de escritura
-            document.getElementById(typingId).remove();
-
-            // Mostrar respuesta del bot
             const botMsg = data.response.replace(/\\n/g, '<br>');
             chat.innerHTML += '<div class="message bot"><div class="bubble">' + botMsg + '</div></div>';
             chat.scrollTop = chat.scrollHeight;
 
-            // Actualizar estado
-            messageCount++;
             document.getElementById('status').innerHTML = 
-              'Mensajes: ' + messageCount + 
+              'Sesión: ' + sessionId.slice(-6) + 
+              ' | Mensajes: ' + messageCount +
               (data.session.userName ? ' | Usuario: ' + data.session.userName : '') +
-              (data.session.modelInterest ? ' | Interés: ' + data.session.modelInterest : '');
+              (data.session.modelInterest ? ' | Modelo: ' + data.session.modelInterest : '') +
+              (data.session.surfaceHA ? ' | Hectáreas: ' + data.session.surfaceHA : '');
 
-            // Log para debug
             console.log('Sesión:', data.session);
-            console.log('Necesidades:', data.needs);
-            console.log('Intención:', data.intent);
+            console.log('Análisis:', data);
 
           } catch (error) {
-            document.getElementById(typingId).remove();
             chat.innerHTML += '<div class="message bot"><div class="bubble">❌ Error: ' + error.message + '</div></div>';
           }
         }
 
-        // Mensaje inicial automático
         window.onload = () => {
           setTimeout(() => {
             chat.innerHTML = '<div class="message bot"><div class="bubble">¡Hola! 👋 Soy Mavilda de Seragro, especialista en drones agrícolas DJI.<br><br>Me encantaría ayudarte a mejorar la eficiencia de tu campo.<br>¿Con quién tengo el gusto de hablar?</div></div>';
@@ -567,28 +669,27 @@ app.get("/test", (req, res) => {
 
 // HEALTH CHECK
 app.get("/", (req, res) => {
+  const sessionCount = Object.keys(sessions).length;
   res.json({
     status: "✅ Operativo",
     name: "Mavilda Bot - Seragro",
-    version: "3.0 Professional",
-    endpoints: {
-      process: "/process - Procesar mensajes",
-      test: "/test - Interfaz de prueba",
+    version: "5.0 Professional",
+    sesionesActivas: sessionCount,
+    detalles: {
+      sesiones: Object.keys(sessions),
+      memoria: process.memoryUsage(),
+      uptime: process.uptime(),
     },
-    features: [
-      "Análisis inteligente de mensajes",
-      "Detección de intenciones",
-      "Respuestas contextuales",
-      "Personalidad argentina natural",
-      "Integración N8N completa",
-    ],
-    timestamp: new Date().toLocaleString("es-AR"),
+    timestamp: new Date().toISOString(),
   });
 });
 
+// INICIAR SERVIDOR
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Mavilda Bot corriendo en puerto ${PORT}`);
+  console.log(`✅ Mavilda Bot PROFESIONAL corriendo en puerto ${PORT}`);
   console.log(`🔗 Interfaz de prueba: http://localhost:${PORT}/test`);
   console.log(`📊 Estado del sistema: http://localhost:${PORT}/`);
+  console.log(`🗑️ Limpiar sesiones: http://localhost:${PORT}/clear`);
+  console.log(`💬 Prompt cargado: ${MAVILDA_PROMPT.substring(0, 50)}...`);
 });
