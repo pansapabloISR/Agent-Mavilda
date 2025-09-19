@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Base de datos de sesiones
+// Base de datos de sesiones en memoria
 const sessions = {};
 
 // Análisis inteligente de mensaje
@@ -41,7 +41,8 @@ function analyzeMessage(message) {
     intent:
       msgLower.includes("precio") ||
       msgLower.includes("costo") ||
-      msgLower.includes("cuanto")
+      msgLower.includes("cuanto") ||
+      msgLower.includes("vale")
         ? "price"
         : msgLower.includes("demo") ||
             msgLower.includes("prueba") ||
@@ -81,7 +82,7 @@ function getSession(sessionId) {
   if (!sessions[sessionId]) {
     sessions[sessionId] = {
       id: sessionId,
-      stage: "greeting", // greeting -> diagnosis -> proposal -> capture -> close
+      stage: "greeting",
       messages: 0,
       userName: null,
       userPhone: null,
@@ -149,7 +150,7 @@ function generateResponse(session, analysis, message) {
         );
       }
       session.stage = "proposal";
-      return "__NEEDS_SHEETS__"; // N8N buscará precios
+      return "__NEEDS_SHEETS__";
 
     case "demo":
       session.stage = "capture";
@@ -166,7 +167,7 @@ function generateResponse(session, analysis, message) {
       if (!modelInterest) {
         return `${name}, ¿de qué modelo querés conocer las especificaciones técnicas?`;
       }
-      return "__NEEDS_PINECONE__"; // N8N buscará specs
+      return "__NEEDS_PINECONE__";
 
     case "financing":
       session.stage = "proposal";
@@ -301,6 +302,12 @@ app.post("/process", async (req, res) => {
       session.captured = true;
     }
 
+    // LOG PARA DEBUG
+    console.log("📥 Recibido:", { message, sessionId });
+    console.log("🧠 Análisis:", analysis);
+    console.log("💬 Respuesta:", response);
+    console.log("📊 Sesión:", session);
+
     // Responder con toda la información necesaria para N8N
     res.json({
       response,
@@ -323,7 +330,7 @@ app.post("/process", async (req, res) => {
       model: session.modelInterest,
     });
   } catch (error) {
-    console.error("Error:", error);
+    console.error("❌ Error:", error);
     res.status(500).json({
       error: "Error procesando mensaje",
       details: error.message,
