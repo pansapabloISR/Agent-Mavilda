@@ -46,7 +46,7 @@ function getSession(sessionId) {
     sessions[sessionId] = {
       id: sessionId,
       stage: "greeting",
-      messages: 0,
+      messageCount: 0, // CAMBIADO: usar messageCount en vez de messages
       userName: null,
       userPhone: null,
       userEmail: null,
@@ -57,6 +57,7 @@ function getSession(sessionId) {
       captured: false,
       history: [],
       context: {},
+      waitingForName: false, // NUEVO: flag para saber si esperamos nombre
     };
   }
   return sessions[sessionId];
@@ -75,6 +76,7 @@ function analyzeMessage(message) {
     /(\d+)\s*(ha|hectarea|hectareas)/i,
     /(\d+)\s*(?:de\s+)?(?:superficie|campo)/i,
     /(?:tengo|trabajo|cultivo)\s+(\d+)/i,
+    /^(\d+)$/i, // NUEVO: solo números
   ];
 
   for (const pattern of surfacePatterns) {
@@ -165,14 +167,37 @@ function analyzeMessage(message) {
       msgLower.includes("hi") ||
       msgLower.includes("buenas") ||
       msgLower.includes("que tal"),
+
+    // NUEVO: Detección si es un posible nombre
+    couldBeName:
+      !msgLower.includes("hola") &&
+      !msgLower.includes("si") &&
+      !msgLower.includes("no") &&
+      message.length < 30 &&
+      !message.match(/\d{3,}/), // No más de 2 dígitos seguidos
   };
 }
 
 // Generador de respuestas contextual mejorado
 function generateResponse(session, analysis, message) {
-  const { stage, userName, modelInterest, surfaceHA, messages } = session;
-  const { intent, model, surface, phone, email, agroTerms, isGreeting } =
-    analysis;
+  const {
+    stage,
+    userName,
+    modelInterest,
+    surfaceHA,
+    messageCount,
+    waitingForName,
+  } = session;
+  const {
+    intent,
+    model,
+    surface,
+    phone,
+    email,
+    agroTerms,
+    isGreeting,
+    couldBeName,
+  } = analysis;
 
   // Actualizar datos de sesión si se detectaron
   if (model && !modelInterest) {
@@ -192,9 +217,10 @@ function generateResponse(session, analysis, message) {
     console.log("✅ Email detectado:", email);
   }
 
-  // ETAPA: SALUDO INICIAL
-  if (messages === 1) {
+  // ETAPA 1: SALUDO INICIAL
+  if (messageCount === 1) {
     session.stage = "greeting";
+    session.waitingForName = true; // NUEVO: Esperamos nombre
     return (
       "¡Hola! 👋 Soy Mavilda de Seragro, especialista en drones agrícolas DJI.\n\n" +
       "Me encantaría ayudarte a mejorar la eficiencia de tu campo.\n" +
@@ -202,19 +228,14 @@ function generateResponse(session, analysis, message) {
     );
   }
 
-  // ETAPA: CAPTURA DE NOMBRE
-  if (messages === 2 && !userName) {
-    // Si es un saludo, no es un nombre
-    if (isGreeting) {
-      return "¿Me decís tu nombre así te puedo asesorar mejor?";
-    }
-    // Si es muy largo o tiene números, probablemente no es un nombre
-    if (message.length > 30 || /\d/.test(message)) {
-      return "Disculpá, no entendí tu nombre. ¿Cómo te llamás?";
-    }
-    // Capturar como nombre
+  // ETAPA 2: CAPTURA DE NOMBRE
+  if (session.waitingForName && !userName && couldBeName) {
+    // Capturar el nombre
     session.userName = message.trim();
     session.stage = "diagnosis";
+    session.waitingForName = false;
+
+    console.log("✅ Nombre capturado:", session.userName);
 
     const saludos = [
       `¡Mucho gusto ${session.userName}! 🚁\n\n¿Qué superficie necesitás cubrir con el drone? También contame qué cultivos trabajás principalmente.`,
@@ -222,6 +243,11 @@ function generateResponse(session, analysis, message) {
       `¡Hola ${session.userName}! Me alegra que te intereses por la tecnología de drones.\n\n¿Qué desafío específico querés resolver en tu campo?`,
     ];
     return saludos[Math.floor(Math.random() * saludos.length)];
+  }
+
+  // Si todavía esperamos el nombre y no lo detectamos
+  if (session.waitingForName && !userName) {
+    return "Disculpá, ¿me decís tu nombre así te puedo asesorar mejor?";
   }
 
   const name = userName || "che";
@@ -285,9 +311,8 @@ function generateResponse(session, analysis, message) {
       );
   }
 
-  // FLUJO CONVERSACIONAL NATURAL
-  if (stage === "diagnosis" && !surfaceHA && surface) {
-    // Si detectamos superficie, recomendar
+  // FLUJO CONVERSACIONAL NATURAL - Detectar superficie
+  if (!surfaceHA && surface) {
     const ha = parseInt(surface);
     session.surfaceHA = ha;
     session.stage = "proposal";
@@ -330,6 +355,7 @@ function generateResponse(session, analysis, message) {
     }
   }
 
+  // Si no tenemos superficie, pedirla
   if (stage === "diagnosis" && !surfaceHA) {
     return (
       `${name}, para recomendarte la mejor opción, ¿cuántas hectáreas necesitás cubrir ` +
@@ -339,7 +365,7 @@ function generateResponse(session, analysis, message) {
 
   // SOLICITUD NATURAL DE CONTACTO
   if (
-    messages >= 5 &&
+    messageCount >= 5 &&
     !session.userPhone &&
     modelInterest &&
     intent !== "demo"
@@ -398,19 +424,20 @@ app.post("/process", async (req, res) => {
       return res.status(400).json({ error: "Mensaje y sessionId requeridos" });
     }
 
-    // Obtener sesión y actualizar
+    // Obtener sesión y actualizar contador
     const session = getSession(sessionId);
-    session.messages++;
+    session.messageCount++; // CAMBIADO: incrementar messageCount
     session.history.push({
       user: message,
       timestamp: new Date(),
     });
 
-    console.log("📊 ESTADO:", {
-      mensaje: session.messages,
+    console.log("📊 ESTADO ANTES:", {
+      mensaje: session.messageCount,
       nombre: session.userName,
       modelo: session.modelInterest,
       hectareas: session.surfaceHA,
+      esperandoNombre: session.waitingForName,
     });
 
     // Analizar mensaje
@@ -433,6 +460,12 @@ app.post("/process", async (req, res) => {
     }
 
     console.log("💬 RESPUESTA:", response.substring(0, 100) + "...");
+    console.log("📊 ESTADO DESPUÉS:", {
+      mensaje: session.messageCount,
+      nombre: session.userName,
+      modelo: session.modelInterest,
+      hectareas: session.surfaceHA,
+    });
 
     // Responder
     res.json({
@@ -444,7 +477,7 @@ app.post("/process", async (req, res) => {
         userEmail: session.userEmail,
         modelInterest: session.modelInterest,
         surfaceHA: session.surfaceHA,
-        messages: session.messages,
+        messages: session.messageCount, // CAMBIADO
         stage: session.stage,
       },
       needs: {
@@ -673,7 +706,7 @@ app.get("/", (req, res) => {
   res.json({
     status: "✅ Operativo",
     name: "Mavilda Bot - Seragro",
-    version: "5.0 Professional",
+    version: "5.1 Professional FIXED",
     sesionesActivas: sessionCount,
     detalles: {
       sesiones: Object.keys(sessions),
